@@ -1,0 +1,38 @@
+.plot-container {
+  position: relative;
+  width: 1920px;
+  height: 400px;
+}
+
+.red-rectangle {
+  position: absolute;
+  left: 860px;
+  width: 200px;
+  height: 100%;
+  background-color: red;
+  z-index: 1;
+  opacity: 50%;
+}
+
+canvas {
+  position: absolute;
+  z-index: 2;
+}
+
+.marker {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: red;
+  border-radius: 50%;
+  z-index: 3;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.slider {
+  position: absolute;
+  /* bottom: 0; */
+  width: 25%;
+  z-index: 3;
+}

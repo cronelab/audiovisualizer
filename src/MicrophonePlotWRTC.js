@@ -2,6 +2,20 @@ import React, { useRef, useEffect, useState } from "react";
 import { WebglPlot, WebglStep, ColorRGBA } from "webgl-plot";
 import "./MicrophonePlot.css";
 import { TextGrid } from "textgrid";
+import config from "./configs/audiovisualizerConfig";
+
+// Curried function that will accumulate the values of whatever iterable it is passed.
+const accumulate = (arr) =>
+  arr.map(
+    (
+      (sum) => (value) =>
+        (sum += value)
+    )(0)
+  );
+
+function generateRandomUniform(min, max) {
+  return Math.random() * (max - min) + min;
+}
 
 function parseTextGrid(textgridContent) {
   const lines = textgridContent.split("\n");
@@ -83,17 +97,108 @@ const MicrophonePlotRTC = () => {
   const wavEnvelopeRef = useRef();
   const [phonemes, setPhonemes] = useState([{}]);
 
+  const [isStarted, setIsStarted] = useState(false);
+
   const bufferSize = 256;
   const sampleRate = 16000;
   const width = window.innerWidth;
   const numPoints = 96000;
   const secondsPadding = 2;
 
+  const initialFlag = useRef(false);
+
   const word = "Nurse";
 
+  const handleStartButtonClick = () => {
+    setIsStarted(true);
+  };
+
   useEffect(() => {
+    if (!isStarted) {
+      return;
+    }
+
     const canvas = canvasRef.current;
     const envelopeCanvas = envelopeCanvasRef.current;
+
+    let audioQueueNAVI = [];
+    let audioQueueInference = [];
+
+    let trialLength = config.TRIAL_CONFIG.block1.length;
+    let TICKS_PER_SECOND = config.TICKS_PER_SECOND;
+
+    let startTimes = Array.from({ length: trialLength }, () =>
+      generateRandomUniform(
+        config.PRE_WORD_INTERVAL - config.VARIANCE,
+        config.PRE_WORD_INTERVAL + config.VARIANCE
+      )
+    );
+
+    let endTimes = Array.from({ length: trialLength }, () =>
+      generateRandomUniform(
+        config.POST_WORD_INTERVAL - config.VARIANCE,
+        config.POST_WORD_INTERVAL + config.VARIANCE
+      )
+    );
+
+    let words = Object.values(config.WORD_CODE);
+    let durations = {};
+    const audioContext = new AudioContext({ sampleRate: sampleRate });
+
+    let promises = words.reduce((acc, element) => {
+      let promise = import(`./words/${element}.wav`)
+        .then((wavModule) => {
+          const wavFile = wavModule.default;
+          return fetch(wavFile);
+        })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          return response.arrayBuffer();
+        })
+        .then((arrayBuffer) => {
+          return new Promise((resolve, reject) => {
+            audioContext.decodeAudioData(arrayBuffer, resolve, reject);
+          });
+        })
+        .then((audioBuffer) => {
+          durations[element] = audioBuffer.duration;
+        })
+        .catch((e) => console.log("There was an error: " + e.message));
+
+      return acc.concat(promise);
+    }, []);
+
+    // WebSocket signaling server
+    signalingServer.current = new WebSocket("ws://10.17.145.76:3000");
+
+    // Wait for the connection to be established before trying to send any data
+    // signalingServer.current.onopen = (event) => {
+    //   console.log("Connection with signaling server established");
+
+    //   Promise.all(promises).then(() => {
+    //     console.log("Resolved Promises");
+    //     console.log(durations);
+
+    //     // Prepare the data to be sent
+    //     const dataToSend = {
+    //       type: "durations",
+    //       content: durations,
+    //     };
+
+    //     // Convert the data to a JSON string
+    //     const dataString = JSON.stringify(dataToSend);
+
+    //     // Send the data to the signaling server
+    //     signalingServer.current.send(dataString);
+    //   });
+    // };
+
+    // Promise.all(promises).then(() => {
+    //   console.log("Resolved Promises");
+    //   console.log(durations);
+    // });
 
     // Function to load and process the .wav file
     const loadWavFile = async () => {
@@ -233,9 +338,6 @@ const MicrophonePlotRTC = () => {
     let envelopePlotData = [];
     let bufferIndex = 0;
 
-    // WebSocket signaling server
-    signalingServer.current = new WebSocket("ws://10.17.145.76:3000");
-
     // Initialize the peer connection
     peerConnection.current = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.stunprotocol.org" }],
@@ -275,11 +377,100 @@ const MicrophonePlotRTC = () => {
         const audioEnd = audioStart + 320;
         const envelopeEnd = audioEnd + 320;
 
+        let timeStampValue;
+
         for (let i = markPay; i < seqNum; i += 2) {
           // console.log(data.getUint16(i, true));
         }
         for (let i = seqNum; i < timestamp; i += 4) {
           // console.log(data.getUint32(i, true));
+          timeStampValue = data.getUint32(i, true);
+        }
+
+        if (!initialFlag.current) {
+          initialFlag.current = !initialFlag.current;
+          Promise.all(promises).then(() => {
+            console.log("Resolved Promises");
+            console.log(durations);
+
+            // Get all of the trial words based on the indices in the config
+            let trialWords = config.TRIAL_CONFIG.block1.map(
+              (trialIndex) => config.WORD_CODE[trialIndex]
+            );
+
+            console.log(trialWords);
+
+            // Get all of the trial durations, including the start and end times.
+            const trialDurations = startTimes.map(
+              (time, idx) =>
+                time * TICKS_PER_SECOND +
+                durations[trialWords[idx]] * TICKS_PER_SECOND +
+                endTimes[idx] * TICKS_PER_SECOND
+            );
+
+            // Run the accumulation function. This will accumulate the values of the iterable object
+            let accumulation = accumulate(trialDurations);
+
+            accumulation.unshift(0);
+            accumulation = accumulation.slice(0, -1);
+
+            // Get all of the word starts by taking the accumulations (starting at 0), and adding the startTimes again
+            const wordStarts = accumulation.map(
+              (time, idx) => time + startTimes[idx] * TICKS_PER_SECOND
+            );
+
+            // Account for the delay at the very beginning of the trial that is parametrized by Trial Start
+            const wordStartsShifted = wordStarts.map(
+              (x) => x + timeStampValue + config.START_DELAY * TICKS_PER_SECOND
+            );
+
+            // A shifted version of the accumulation array
+            const accumulationShifted = accumulation.map(
+              (x) => x + timeStampValue + config.START_DELAY * TICKS_PER_SECOND
+            );
+
+            // trialWords.forEach((word, idx) => {
+            //   // Prepare the data to be sent
+            //   const wordWithNull = `${word}`;
+            //   const data = new Uint8Array(wordWithNull.length + 4); // 4 for timestamp
+            //   data.set(new TextEncoder().encode(wordWithNull), 0); // converting word to bytes
+            //   data.set(
+            //     new Uint8Array(
+            //       new Uint32Array([wordStartsShifted[idx]]).buffer
+            //     ),
+            //     wordWithNull.length
+            //   ); // adding timestamp after word
+
+            //   // Send the data to the signaling server
+            //   signalingServer.current.send(data.buffer);
+            // });
+
+            const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+
+            (async function () {
+              for (const [idx, word] of trialWords.entries()) {
+                console.log("Inside async function");
+                console.log(word);
+
+                // Prepare the data to be sent
+                const wordWithNull = `${word}`;
+                const data = new Uint8Array(wordWithNull.length + 4); // 4 for timestamp
+                data.set(new TextEncoder().encode(wordWithNull), 0); // converting word to bytes
+                data.set(
+                  new Uint8Array(
+                    new Uint32Array([wordStartsShifted[idx]]).buffer
+                  ),
+                  wordWithNull.length
+                ); // adding timestamp after word
+
+                // Send the data to the signaling server
+                signalingServer.current.send(data.buffer);
+
+                // do something after 1000 milliseconds
+                await delay(10);
+              }
+            })();
+          });
         }
 
         for (let i = audioStart; i < audioEnd; i += 2) {
@@ -343,7 +534,7 @@ const MicrophonePlotRTC = () => {
         signalingServer.current.close();
       }
     };
-  }, []);
+  }, [isStarted]);
 
   const handleSliderChange = (event) => {
     sliderValueRef.current = event.target.value;
@@ -368,6 +559,8 @@ const MicrophonePlotRTC = () => {
 
   return (
     <>
+      <button onClick={handleStartButtonClick}>Start</button>
+
       {phonemes.map((phoneme, index) => {
         const leftPosition =
           (((secondsPadding + phoneme.xmin) * sampleRate) / numPoints) * width;

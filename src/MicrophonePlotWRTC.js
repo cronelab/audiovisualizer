@@ -458,22 +458,6 @@ const MicrophonePlotRTC = () => {
               (x) => x + timeStampValue + config.START_DELAY * TICKS_PER_SECOND
             );
 
-            // trialWords.forEach((word, idx) => {
-            //   // Prepare the data to be sent
-            //   const wordWithNull = `${word}`;
-            //   const data = new Uint8Array(wordWithNull.length + 4); // 4 for timestamp
-            //   data.set(new TextEncoder().encode(wordWithNull), 0); // converting word to bytes
-            //   data.set(
-            //     new Uint8Array(
-            //       new Uint32Array([wordStartsShifted[idx]]).buffer
-            //     ),
-            //     wordWithNull.length
-            //   ); // adding timestamp after word
-
-            //   // Send the data to the signaling server
-            //   signalingServer.current.send(data.buffer);
-            // });
-
             const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
             (async function () {
@@ -527,25 +511,7 @@ const MicrophonePlotRTC = () => {
             plotData.push(plotDataArray[i]);
             envelopePlotData.push(plotEnvelopeArray[i]);
           }
-
-          // console.log("TimeStamp Array");
-          // console.log(plotTimestamps);
-
-          // for (let i = 0; i < plotDataArray.length; i++) {
-
-          // }
-          // plotTimestamps.push(timeStampValue - startTimeStampValue);
-          // plotData.push(plotDataValue);
-          // envelopePlotData.push(plotEnvelopeValue);
         } else {
-          // console.log(plotTimestamps);
-          // console.log("TimeStampArrayInitial");
-          // console.log(timeStampValue);
-          // console.log("Start of TimeStamp Array");
-          // console.log(startTimeStampValue);
-          // console.log("Diff")
-          // console.log(timeStampValue - startTimeStampValue);
-
           startTimeStampValue = timeStampValue;
           plotTimestamps = [];
           plotData = [];
@@ -558,16 +524,7 @@ const MicrophonePlotRTC = () => {
             plotData.push(plotDataArray[i]);
             envelopePlotData.push(plotEnvelopeArray[i]);
           }
-
-          // plotTimestamps = [timeStampValue - startTimeStampValue];
-          // plotData = [plotDataValue];
-          // envelopePlotData = [plotEnvelopeValue];
         }
-
-        // while (plotTimestamps[0] < timeStampValue - (5*TICKS_PER_SECOND)) {
-        //   plotTimestamps.shift();
-        //   plotData.shift();
-        // }
       };
     };
 
@@ -594,54 +551,10 @@ const MicrophonePlotRTC = () => {
         webglp.update();
         envelopeWebglp.update();
 
-        // if (lastTimestamp) {
-        //   const elapsedTime = (timestamp - lastTimestamp) / 1000;
-        //   const samplesToPlot = Math.floor(elapsedTime * sampleRate);
-
-        //   for (let i = 0; i < samplesToPlot && i < plotData.length; i++) {
-        //     line.setY(bufferIndex, plotData[i] / 32768);
-        //     envelopeLine.setY(bufferIndex, envelopePlotData[i] / 32768);
-        //     // bufferIndex = (bufferIndex + 1) % numPoints;
-        //   }
-
-        //   plotData = plotData.slice(samplesToPlot);
-        //   envelopePlotData = envelopePlotData.slice(samplesToPlot);
-
-        // }
         lastTimestamp = timestamp;
         requestAnimationFrame(animate);
       }
     };
-
-    // Render loop
-    // const animate = (timestamp) => {
-    //   if (canvasRef.current && envelopeCanvasRef.current) {
-    //     if (lastTimestamp) {
-    //       const elapsedTime = (timestamp - lastTimestamp) / 1000;
-    //       const samplesToPlot = Math.floor(elapsedTime * sampleRate);
-
-    //       for (let i = 0; i < samplesToPlot && i < plotData.length; i++) {
-    //         line.setY(bufferIndex, plotData[i] / 32768);
-    //         envelopeLine.setY(bufferIndex, envelopePlotData[i] / 32768);
-    //         bufferIndex = (bufferIndex + 1) % numPoints;
-    //       }
-
-    //       plotData = plotData.slice(samplesToPlot);
-    //       envelopePlotData = envelopePlotData.slice(samplesToPlot);
-
-    //       const markerPosition =
-    //         ((bufferIndex + parseInt(sliderValueRef.current)) % numPoints) *
-    //         (width / numPoints);
-    //       markerRef.current.style.left = `${markerPosition}px`;
-    //       envelopeMarkerRef.current.style.left = `${markerPosition}px`;
-
-    //       webglp.update();
-    //       envelopeWebglp.update();
-    //     }
-    //     lastTimestamp = timestamp;
-    //     requestAnimationFrame(animate);
-    //   }
-    // };
 
     // Superimpose wav data if available
     if (wavDataRef.current) {

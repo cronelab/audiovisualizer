@@ -1,8 +1,8 @@
 const config = {
-  PRE_WORD_INTERVAL: 1, // s
+  PRE_WORD_INTERVAL: 2, // s
   POST_WORD_INTERVAL: 1, // s
   VARIANCE: 0.5, // s
-  START_DELAY: 10, // s
+  START_DELAY: 3, // s
   TICKS_PER_SECOND: 48000,
 
   WORD_CODE: {
@@ -13,7 +13,7 @@ const config = {
   },
 
   TRIAL_CONFIG: {
-    block1: [0, 0, 1],
+    block1: [0, 1, 0],
     block2: [1, 2, 1, 1, 0, 0, 2, 1, 0, 2],
   },
 };

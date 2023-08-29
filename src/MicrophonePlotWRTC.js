@@ -95,6 +95,10 @@ const MicrophonePlotRTC = () => {
   const signalingServer = useRef();
   const wavDataRef = useRef();
   const wavEnvelopeRef = useRef();
+  const currentWordIdxRef = useRef(0);
+  const startTimes = useRef([0]);
+  const trialStartTimestamp = useRef(null);
+  const initializeTrial = useRef(false);
   const [phonemes, setPhonemes] = useState([{}]);
 
   const [isStarted, setIsStarted] = useState(false);
@@ -128,7 +132,7 @@ const MicrophonePlotRTC = () => {
     let trialLength = config.TRIAL_CONFIG.block1.length;
     let TICKS_PER_SECOND = config.TICKS_PER_SECOND;
 
-    let startTimes = Array.from({ length: trialLength }, () =>
+    startTimes.current = Array.from({ length: trialLength }, () =>
       generateRandomUniform(
         config.PRE_WORD_INTERVAL - config.VARIANCE,
         config.PRE_WORD_INTERVAL + config.VARIANCE
@@ -145,6 +149,10 @@ const MicrophonePlotRTC = () => {
     let words = Object.values(config.WORD_CODE);
     let durations = {};
     const audioContext = new AudioContext({ sampleRate: sampleRate });
+
+    let trialWords = config.TRIAL_CONFIG.block1.map(
+      (trialIndex) => config.WORD_CODE[trialIndex]
+    );
 
     let promises = words.reduce((acc, element) => {
       let promise = import(`./words/${element}.wav`)
@@ -170,6 +178,18 @@ const MicrophonePlotRTC = () => {
 
       return acc.concat(promise);
     }, []);
+
+    // Get all of the trial durations, including the start and end times.
+    let trialDurations;
+    // let trialDurations = startTimes.map(
+    //   (time, idx) =>
+    //     time * TICKS_PER_SECOND +
+    //     durations[trialWords[idx]] * TICKS_PER_SECOND +
+    //     endTimes[idx] * TICKS_PER_SECOND
+    // );
+
+    // console.log("Trial Durations One");
+    // console.log(trialDurations);
 
     // WebSocket signaling server
     signalingServer.current = new WebSocket("ws://10.17.145.76:3000");
@@ -202,7 +222,7 @@ const MicrophonePlotRTC = () => {
     // });
 
     // Function to load and process the .wav file
-    const loadWavFile = async () => {
+    const loadWavFile = async (word, startTimeSeconds, endTimeSeconds) => {
       try {
         const textgridModule = await import(`./word_labels/${word}.TextGrid`);
         const textgridFile = textgridModule.default;
@@ -228,22 +248,34 @@ const MicrophonePlotRTC = () => {
             audioContext.decodeAudioData(arrayBuffer, (audioBuffer) => {
               wavDataRef.current = audioBuffer.getChannelData(0);
 
-              console.log(wavDataRef.current.length);
+              // console.log(wavDataRef.current.length);
 
               // Superimpose wav data if available
               if (wavDataRef.current) {
-                console.log("In Here");
-                const paddingSamples = secondsPadding * sampleRate; // 2 seconds padding in samples
+                // console.log("In Here");
+                const paddingSamples = Math.floor(
+                  startTimeSeconds * sampleRate
+                ); // 2 seconds padding in samples
+                const paddingSamplesEnd = Math.floor(
+                  endTimeSeconds * sampleRate
+                );
                 for (
                   let i = 0;
-                  i < paddingSamples + wavDataRef.current.length;
+                  i <
+                  paddingSamples +
+                    wavDataRef.current.length +
+                    paddingSamplesEnd;
                   i++
                 ) {
                   if (i < paddingSamples) {
                     wavLine.setY(i, 0); // set the padding as zeros
+                  } else if (i >= paddingSamples + wavDataRef.current.length) {
+                    wavLine.setY(i, 0);
                   } else {
-                    const wavSampleIndex =
-                      (i - paddingSamples) % wavDataRef.current.length;
+                    const wavSampleIndex = i - paddingSamples;
+                    // console.log("wavSampleIndex");
+                    // console.log(wavSampleIndex);
+                    // (i - paddingSamples) % wavDataRef.current.length;
                     const wavSample = wavDataRef.current[wavSampleIndex];
                     wavLine.setY(i, wavSample); // superimpose actual wav data after padding
                   }
@@ -264,22 +296,36 @@ const MicrophonePlotRTC = () => {
             audioContext.decodeAudioData(arrayBuffer, (audioBuffer) => {
               wavEnvelopeRef.current = audioBuffer.getChannelData(0);
 
-              console.log(wavEnvelopeRef.current.length);
+              // console.log("Wav Envelope Ref");
+              // console.log(wavEnvelopeRef.current.length);
 
               // Superimpose wav data if available
               if (wavEnvelopeRef.current) {
-                console.log("In Here");
-                const paddingSamples = secondsPadding * sampleRate; // 2 seconds padding in samples
+                // console.log("In Here");
+                const paddingSamples = Math.floor(
+                  startTimeSeconds * sampleRate
+                ); // 2 seconds padding in samples
+                const paddingSamplesEnd = Math.floor(
+                  endTimeSeconds * sampleRate
+                );
                 for (
                   let i = 0;
-                  i < paddingSamples + wavEnvelopeRef.current.length;
+                  i <
+                  paddingSamples +
+                    wavEnvelopeRef.current.length +
+                    paddingSamplesEnd;
                   i++
                 ) {
                   if (i < paddingSamples) {
                     envelopeWavLine.setY(i, 0); // set the padding as zeros
+                  } else if (
+                    i >=
+                    paddingSamples + wavEnvelopeRef.current.length
+                  ) {
+                    envelopeWavLine.setY(i, 0);
                   } else {
-                    const wavSampleIndex =
-                      (i - paddingSamples) % wavEnvelopeRef.current.length;
+                    const wavSampleIndex = i - paddingSamples;
+                    // (i - paddingSamples) % wavEnvelopeRef.current.length;
                     const wavSample = wavEnvelopeRef.current[wavSampleIndex];
                     envelopeWavLine.setY(i, wavSample); // superimpose actual wav data after padding
                   }
@@ -295,7 +341,7 @@ const MicrophonePlotRTC = () => {
     };
 
     // Call the loadWavFile function
-    loadWavFile();
+    // loadWavFile("Nurse");
 
     const devicePixelRatio = window.devicePixelRatio || 1;
     canvas.width = width * devicePixelRatio;
@@ -399,15 +445,24 @@ const MicrophonePlotRTC = () => {
           // console.log(data.getUint32(i, true));
           let curTimeStampValue = data.getUint32(i, true);
 
-          if (!timeStampValue) {
-            startTimeStampValue = curTimeStampValue;
+          if (
+            trialStartTimestamp.current &&
+            curTimeStampValue >= trialStartTimestamp.current
+          ) {
+            console.log("Here");
+            initializeTrial.current = true;
 
-            console.log("startTimeStamp");
-            console.log(startTimeStampValue);
-
-            console.log("TimeStamp Value");
-            console.log(curTimeStampValue);
+            // startTimeStampValue = curTimeStampValue;
           }
+
+          // if (!timeStampValue) {
+
+          // console.log("startTimeStamp");
+          // console.log(startTimeStampValue);
+
+          // console.log("TimeStamp Value");
+          // console.log(curTimeStampValue);
+          // }
 
           timeStampValue = curTimeStampValue;
         }
@@ -419,23 +474,41 @@ const MicrophonePlotRTC = () => {
         if (!initialFlag.current) {
           initialFlag.current = !initialFlag.current;
           Promise.all(promises).then(() => {
-            console.log("Resolved Promises");
-            console.log(durations);
-
-            // Get all of the trial words based on the indices in the config
-            let trialWords = config.TRIAL_CONFIG.block1.map(
-              (trialIndex) => config.WORD_CODE[trialIndex]
-            );
-
-            console.log(trialWords);
-
-            // Get all of the trial durations, including the start and end times.
-            const trialDurations = startTimes.map(
+            trialDurations = startTimes.current.map(
               (time, idx) =>
                 time * TICKS_PER_SECOND +
                 durations[trialWords[idx]] * TICKS_PER_SECOND +
                 endTimes[idx] * TICKS_PER_SECOND
             );
+
+            // console.log("Resolved Promises");
+            // console.log(durations);
+
+            // Get all of the trial words based on the indices in the config
+
+            // console.log("Trial Words");
+            // console.log(trialWords);
+
+            // loadWavFile(
+            //   trialWords[currentWordIdxRef.current],
+            //   startTimes.current[currentWordIdxRef.current],
+            //   endTimes[currentWordIdxRef.current]
+            // );
+
+            console.log("currentWordIdxRef");
+            console.log(currentWordIdxRef.current);
+
+            loadWavFile(
+              trialWords[currentWordIdxRef.current],
+              startTimes.current[currentWordIdxRef.current],
+              endTimes[currentWordIdxRef.current]
+            )
+              .then(() => {
+                console.log("Wav file loaded successfully");
+              })
+              .catch((error) => {
+                console.error("Failed to load wav file", error);
+              });
 
             // Run the accumulation function. This will accumulate the values of the iterable object
             let accumulation = accumulate(trialDurations);
@@ -445,13 +518,19 @@ const MicrophonePlotRTC = () => {
 
             // Get all of the word starts by taking the accumulations (starting at 0), and adding the startTimes again
             const wordStarts = accumulation.map(
-              (time, idx) => time + startTimes[idx] * TICKS_PER_SECOND
+              (time, idx) => time + startTimes.current[idx] * TICKS_PER_SECOND
             );
 
             // Account for the delay at the very beginning of the trial that is parametrized by Trial Start
             const wordStartsShifted = wordStarts.map(
               (x) => x + timeStampValue + config.START_DELAY * TICKS_PER_SECOND
             );
+
+            trialStartTimestamp.current =
+              timeStampValue + config.START_DELAY * TICKS_PER_SECOND;
+
+            startTimeStampValue =
+              timeStampValue + config.START_DELAY * TICKS_PER_SECOND;
 
             // A shifted version of the accumulation array
             const accumulationShifted = accumulation.map(
@@ -462,8 +541,8 @@ const MicrophonePlotRTC = () => {
 
             (async function () {
               for (const [idx, word] of trialWords.entries()) {
-                console.log("Inside async function");
-                console.log(word);
+                // console.log("Inside async function");
+                // console.log(word);
 
                 // Prepare the data to be sent
                 const wordWithNull = `${word}`;
@@ -486,43 +565,98 @@ const MicrophonePlotRTC = () => {
           });
         }
 
-        let plotDataArray = [];
-        for (let i = audioStart; i < audioEnd; i += 2) {
-          plotDataArray.push(data.getInt16(i, true));
-          // plotDataValue = data.getInt16(i, true);
-        }
-
-        let plotEnvelopeArray = [];
-        for (let i = audioEnd; i < envelopeEnd; i += 2) {
-          plotEnvelopeArray.push(data.getInt16(i, true));
-          // plotEnvelopeValue = data.getInt16(i, true);
-        }
-
-        if (
-          timeStampValue - startTimeStampValue <
-          windowWidth * TICKS_PER_SECOND
-        ) {
-          for (let i = 0; i < timeStampArray.length; i++) {
-            if (i === 0) {
-            }
-            plotTimestamps.push(
-              Math.floor((timeStampArray[i] - startTimeStampValue) / 3)
-            );
-            plotData.push(plotDataArray[i]);
-            envelopePlotData.push(plotEnvelopeArray[i]);
+        if (trialDurations && initializeTrial.current) {
+          let plotDataArray = [];
+          for (let i = audioStart; i < audioEnd; i += 2) {
+            plotDataArray.push(data.getInt16(i, true));
+            // plotDataValue = data.getInt16(i, true);
           }
-        } else {
-          startTimeStampValue = timeStampValue;
-          plotTimestamps = [];
-          plotData = [];
-          envelopePlotData = [];
 
-          for (let i = 0; i < timeStampArray.length; i++) {
-            plotTimestamps.push(
-              Math.floor((timeStampArray[i] - startTimeStampValue) / 3)
-            );
-            plotData.push(plotDataArray[i]);
-            envelopePlotData.push(plotEnvelopeArray[i]);
+          let plotEnvelopeArray = [];
+          for (let i = audioEnd; i < envelopeEnd; i += 2) {
+            plotEnvelopeArray.push(data.getInt16(i, true));
+            // plotEnvelopeValue = data.getInt16(i, true);
+          }
+
+          // console.log("Trial Durations");
+          // console.log(trialDurations);
+          // console.log(trialDurations[currentWordIdxRef.current]);
+
+          console.log("Diff");
+          console.log(timeStampValue - trialStartTimestamp.current);
+          console.log("target");
+          console.log(trialDurations[currentWordIdxRef.current]);
+
+          if (
+            timeStampValue - startTimeStampValue <
+            trialDurations[currentWordIdxRef.current]
+          ) {
+            for (let i = 0; i < timeStampArray.length; i++) {
+              if (i === 0) {
+              }
+              plotTimestamps.push(
+                Math.floor(
+                  (timeStampArray[i] - startTimeStampValue) /
+                    (config.TICKS_PER_SECOND / sampleRate)
+                )
+              );
+              plotData.push(plotDataArray[i]);
+              envelopePlotData.push(plotEnvelopeArray[i]);
+            }
+          } else {
+            currentWordIdxRef.current += 1;
+
+            console.log("currentWordIdxRef");
+            console.log(currentWordIdxRef.current);
+
+            // console.log("Trial Words 2");
+            // console.log(trialWords);
+
+            // console.log("Current Word Idx Ref");
+            // console.log(currentWordIdxRef.current);
+            // console.log(trialWords);
+            // console.log(startTimes.current);
+            // console.log(endTimes);
+
+            // loadWavFile(
+            //   trialWords[currentWordIdxRef.current],
+            //   startTimes.current[currentWordIdxRef.current],
+            //   endTimes[currentWordIdxRef.current]
+            // );
+
+            loadWavFile(
+              trialWords[currentWordIdxRef.current],
+              startTimes.current[currentWordIdxRef.current],
+              endTimes[currentWordIdxRef.current]
+            )
+              .then(() => {
+                console.log("Wav file loaded successfully");
+              })
+              .catch((error) => {
+                console.error("Failed to load wav file", error);
+              });
+
+            startTimeStampValue = timeStampValue;
+            plotTimestamps = [];
+            plotData = [];
+            envelopePlotData = [];
+
+            for (let i = 0; i < numPoints; i++) {
+              line.setY(i, 0);
+              envelopeLine.setY(i, 0);
+              // bufferIndex = (bufferIndex + 1) % numPoints;
+            }
+
+            for (let i = 0; i < timeStampArray.length; i++) {
+              plotTimestamps.push(
+                Math.floor(
+                  (timeStampArray[i] - startTimeStampValue) /
+                    (config.TICKS_PER_SECOND / sampleRate)
+                )
+              );
+              plotData.push(plotDataArray[i]);
+              envelopePlotData.push(plotEnvelopeArray[i]);
+            }
           }
         }
       };
@@ -533,10 +667,17 @@ const MicrophonePlotRTC = () => {
 
     // Render loop
     const animate = (timestamp) => {
-      if (canvasRef.current && envelopeCanvasRef.current) {
+      if (
+        canvasRef.current &&
+        envelopeCanvasRef.current &&
+        initializeTrial.current
+      ) {
         for (let i = 0; i < plotTimestamps.length; i++) {
-          line.setY(plotTimestamps[i], plotData[i] / 32768);
-          envelopeLine.setY(plotTimestamps[i], envelopePlotData[i] / 32768);
+          line.setY(plotTimestamps[i], plotData[i] / Math.pow(2, 15));
+          envelopeLine.setY(
+            plotTimestamps[i],
+            envelopePlotData[i] / Math.pow(2, 15)
+          );
           // bufferIndex = (bufferIndex + 1) % numPoints;
         }
 
@@ -545,6 +686,8 @@ const MicrophonePlotRTC = () => {
             parseInt(sliderValueRef.current)) *
           (width / (windowWidth * sampleRate));
 
+        // console.log(markerPosition);
+
         markerRef.current.style.left = `${markerPosition}px`;
         envelopeMarkerRef.current.style.left = `${markerPosition}px`;
 
@@ -552,18 +695,18 @@ const MicrophonePlotRTC = () => {
         envelopeWebglp.update();
 
         lastTimestamp = timestamp;
-        requestAnimationFrame(animate);
       }
+      requestAnimationFrame(animate);
     };
 
     // Superimpose wav data if available
-    if (wavDataRef.current) {
-      for (let i = 0; i < wavDataRef.current.length; i++) {
-        const wavSampleIndex = (bufferIndex + i) % wavDataRef.current.length;
-        const wavSample = wavDataRef.current[wavSampleIndex];
-        wavLine.setY(bufferIndex + i, wavSample); // superimpose
-      }
-    }
+    // if (wavDataRef.current) {
+    //   for (let i = 0; i < wavDataRef.current.length; i++) {
+    //     const wavSampleIndex = (bufferIndex + i) % wavDataRef.current.length;
+    //     const wavSample = wavDataRef.current[wavSampleIndex];
+    //     wavLine.setY(bufferIndex + i, wavSample); // superimpose
+    //   }
+    // }
 
     requestAnimationFrame(animate);
 
@@ -604,12 +747,15 @@ const MicrophonePlotRTC = () => {
 
       {phonemes.map((phoneme, index) => {
         const leftPosition =
-          (((secondsPadding + phoneme.xmin) * sampleRate) / numPoints) * width;
+          (((startTimes.current[currentWordIdxRef.current] + phoneme.xmin) *
+            sampleRate) /
+            numPoints) *
+          width;
         var boxWidth =
           (((phoneme.xmax - phoneme.xmin) * sampleRate) / numPoints) * width;
 
-        console.log("boxWidth");
-        console.log(boxWidth);
+        // console.log("boxWidth");
+        // console.log(boxWidth);
         return (
           <div
             key={index}

@@ -559,7 +559,7 @@ const MicrophonePlotRTC = () => {
                 signalingServer.current.send(data.buffer);
 
                 // do something after 1000 milliseconds
-                await delay(10);
+                await delay(100);
               }
             })();
           });
@@ -644,6 +644,8 @@ const MicrophonePlotRTC = () => {
             for (let i = 0; i < numPoints; i++) {
               line.setY(i, 0);
               envelopeLine.setY(i, 0);
+              wavLine.setY(i, 0);
+              envelopeWavLine.setY(i, 0);
               // bufferIndex = (bufferIndex + 1) % numPoints;
             }
 

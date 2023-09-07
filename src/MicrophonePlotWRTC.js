@@ -99,8 +99,10 @@ const MicrophonePlotRTC = () => {
   const startTimes = useRef([0]);
   const trialStartTimestamp = useRef(null);
   const initializeTrial = useRef(false);
+  const trialEndTimestamp = useRef(null);
+  const timeStampValueGlobal = useRef(null);
   const [phonemes, setPhonemes] = useState([{}]);
-
+  const [currentWord, setCurrentWord] = useState("");
   const [isStarted, setIsStarted] = useState(false);
 
   const bufferSize = 256;
@@ -122,6 +124,9 @@ const MicrophonePlotRTC = () => {
     if (!isStarted) {
       return;
     }
+
+    console.log("Is Started");
+    console.log(isStarted);
 
     const canvas = canvasRef.current;
     const envelopeCanvas = envelopeCanvasRef.current;
@@ -192,6 +197,7 @@ const MicrophonePlotRTC = () => {
     // console.log(trialDurations);
 
     // WebSocket signaling server
+    console.log("Signaling Server Initialized");
     signalingServer.current = new WebSocket("ws://10.17.145.76:3000");
 
     // Wait for the connection to be established before trying to send any data
@@ -236,6 +242,7 @@ const MicrophonePlotRTC = () => {
             textGridObj["items"] = textGridObj["items"].slice(1);
 
             setPhonemes(textGridObj["items"][1]["intervals"]);
+            setCurrentWord(word);
           });
 
         const wavModule = await import(`./words/${word}.wav`);
@@ -356,7 +363,7 @@ const MicrophonePlotRTC = () => {
 
     const webglp = new WebglPlot(canvas);
     const line = new WebglStep(
-      new ColorRGBA(0.1, 0.1, 0.1, 1),
+      new ColorRGBA(0.118, 0, 1, 0.7),
       windowWidth * sampleRate
     );
     webglp.addLine(line);
@@ -365,24 +372,32 @@ const MicrophonePlotRTC = () => {
 
     const envelopeWebglp = new WebglPlot(envelopeCanvas);
     const envelopeLine = new WebglStep(
-      new ColorRGBA(0.1, 0.1, 0.1, 1),
+      new ColorRGBA(0.118, 0, 1, 0.9),
       windowWidth * sampleRate
     );
     envelopeWebglp.addLine(envelopeLine);
     envelopeLine.lineSpaceX(-1, 2 / (windowWidth * sampleRate));
 
     // Create a separate line for WAV data
-    const wavLine = new WebglStep(new ColorRGBA(1, 0, 0, 0.5), numPoints);
+    const wavLine = new WebglStep(new ColorRGBA(0.1, 0.1, 0.1, 0.8), numPoints);
     webglp.addLine(wavLine);
     wavLine.lineSpaceX(-1, 2 / numPoints);
 
     // Create a separate line for WAV data
     const envelopeWavLine = new WebglStep(
-      new ColorRGBA(0, 0, 1, 0.5),
+      new ColorRGBA(0.1, 0.1, 0.1, 0.8),
       numPoints
     );
     envelopeWebglp.addLine(envelopeWavLine);
     envelopeWavLine.lineSpaceX(-1, 2 / numPoints);
+
+    for (let i = 0; i < numPoints; i++) {
+      line.setY(i, 0);
+      envelopeLine.setY(i, 0);
+      wavLine.setY(i, 0);
+      envelopeWavLine.setY(i, 0);
+      // bufferIndex = (bufferIndex + 1) % numPoints;
+    }
 
     let plotData = [];
     let plotTimestamps = [];
@@ -444,6 +459,7 @@ const MicrophonePlotRTC = () => {
         for (let i = seqNum; i < timestamp; i += 4) {
           // console.log(data.getUint32(i, true));
           let curTimeStampValue = data.getUint32(i, true);
+          timeStampValueGlobal.current = curTimeStampValue;
 
           if (
             trialStartTimestamp.current &&
@@ -537,6 +553,17 @@ const MicrophonePlotRTC = () => {
               (x) => x + timeStampValue + config.START_DELAY * TICKS_PER_SECOND
             );
 
+            // Calculate the final timestamp of the entire trial
+            const finalTimestamp =
+              accumulationShifted[accumulationShifted.length - 1] +
+              trialDurations[trialDurations.length - 1];
+
+            // Save the final timestamp to trialEndTimestamp.current
+            trialEndTimestamp.current = finalTimestamp;
+
+            console.log("Trial End Timestamp");
+            console.log(trialEndTimestamp.current);
+
             const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
             (async function () {
@@ -624,17 +651,22 @@ const MicrophonePlotRTC = () => {
             //   endTimes[currentWordIdxRef.current]
             // );
 
-            loadWavFile(
-              trialWords[currentWordIdxRef.current],
-              startTimes.current[currentWordIdxRef.current],
-              endTimes[currentWordIdxRef.current]
-            )
-              .then(() => {
-                console.log("Wav file loaded successfully");
-              })
-              .catch((error) => {
-                console.error("Failed to load wav file", error);
-              });
+            if (
+              trialEndTimestamp.current &&
+              timeStampValueGlobal.current < trialEndTimestamp.current
+            ) {
+              loadWavFile(
+                trialWords[currentWordIdxRef.current],
+                startTimes.current[currentWordIdxRef.current],
+                endTimes[currentWordIdxRef.current]
+              )
+                .then(() => {
+                  console.log("Wav file loaded successfully");
+                })
+                .catch((error) => {
+                  console.error("Failed to load wav file", error);
+                });
+            }
 
             startTimeStampValue = timeStampValue;
             plotTimestamps = [];
@@ -697,7 +729,68 @@ const MicrophonePlotRTC = () => {
         envelopeWebglp.update();
 
         lastTimestamp = timestamp;
+
+        if (
+          trialEndTimestamp.current &&
+          timeStampValueGlobal.current >= trialEndTimestamp.current
+        ) {
+          if (peerConnection.current) {
+            peerConnection.current.close();
+          }
+          if (signalingServer.current) {
+            signalingServer.current.close();
+          }
+          // setIsStarted(false);
+
+          // canvasRef.current = null;
+          // envelopeCanvasRef.current = null;
+          // markerRef.current = null;
+          // envelopeMarkerRef.current = null;
+          markerRef.current.style.left = `${0}px`;
+          envelopeMarkerRef.current.style.left = `${0}px`;
+          sliderValueRef.current = 0;
+          peerConnection.current = null;
+          dataChannel.current = null;
+          signalingServer.current = null;
+          wavDataRef.current = null;
+          wavEnvelopeRef.current = null;
+          currentWordIdxRef.current = 0;
+          startTimes.current = [0];
+          trialStartTimestamp.current = null;
+          initializeTrial.current = false;
+          trialEndTimestamp.current = null;
+          timeStampValueGlobal.current = null;
+
+          for (let i = 0; i < numPoints; i++) {
+            line.setY(i, 0);
+            envelopeLine.setY(i, 0);
+            wavLine.setY(i, 0);
+            envelopeWavLine.setY(i, 0);
+            // bufferIndex = (bufferIndex + 1) % numPoints;
+          }
+
+          setPhonemes([{}]);
+          setCurrentWord("");
+
+          setIsStarted(false);
+
+          initialFlag.current = false;
+        }
+
+        // if (peerConnection.current) {
+        //   peerConnection.current.close();
+        // }
+        // if (signalingServer.current) {
+        //   signalingServer.current.close();
+        // }
+
+        // console.log("Trial End Timestamp");
+        // console.log(trialEndTimestamp.current);
+
+        // console.log("Timestamp");
+        // console.log(timestamp);
       }
+
       requestAnimationFrame(animate);
     };
 
@@ -715,9 +808,11 @@ const MicrophonePlotRTC = () => {
     return () => {
       if (peerConnection.current) {
         peerConnection.current.close();
+        peerConnection.current = null;
       }
       if (signalingServer.current) {
         signalingServer.current.close();
+        signalingServer.current = null;
       }
     };
   }, [isStarted]);
@@ -745,39 +840,46 @@ const MicrophonePlotRTC = () => {
 
   return (
     <>
-      <button onClick={handleStartButtonClick}>Start</button>
+      {isStarted &&
+        phonemes.map((phoneme, index) => {
+          const leftPosition =
+            (((startTimes.current[currentWordIdxRef.current] + phoneme.xmin) *
+              sampleRate) /
+              numPoints) *
+            width;
+          var boxWidth =
+            (((phoneme.xmax - phoneme.xmin) * sampleRate) / numPoints) * width;
 
-      {phonemes.map((phoneme, index) => {
-        const leftPosition =
-          (((startTimes.current[currentWordIdxRef.current] + phoneme.xmin) *
-            sampleRate) /
-            numPoints) *
-          width;
-        var boxWidth =
-          (((phoneme.xmax - phoneme.xmin) * sampleRate) / numPoints) * width;
-
-        // console.log("boxWidth");
-        // console.log(boxWidth);
-        return (
-          <div
-            key={index}
-            className="phoneme-box"
-            style={{
-              position: "absolute",
-              left: `${leftPosition}px`,
-              width: `${boxWidth}px`,
-              height: "100%",
-              backgroundColor: "rgba(200, 200, 200, 0.2)",
-              border: "0.2px solid grey",
-              textAlign: "center",
-              // lineHeight: "400px",
-              zIndex: "5",
-            }}
-          >
-            {phoneme.text}
-          </div>
-        );
-      })}
+          // console.log("boxWidth");
+          // console.log(boxWidth);
+          return (
+            <div
+              key={index}
+              className="phoneme-box"
+              style={{
+                position: "absolute",
+                left: `${leftPosition}px`,
+                width: `${boxWidth}px`,
+                height: "100%",
+                background:
+                  "linear-gradient(180deg, rgba(9,9,121,0.14049369747899154) 0%, rgba(0,212,255,0) 100%)",
+                backgroundColor:
+                  "linear-gradient(180deg, rgba(8,0,161,1) 0%, rgba(9,9,121,0.5522584033613445) 0%, rgba(0,212,255,0) 100%)",
+                // border: "0.05px solid rgba(0, 0, 0, 0.06)",
+                textAlign: "center",
+                boxShadow: "0 0 0 0.05px rgba(0, 0, 0, 1)",
+                // lineHeight: "400px",
+                zIndex: "5",
+                color: "rgba(8,0,161,0.5)",
+                fontWeight: "bold",
+                fontSize: "150%",
+                paddingTop: "20px",
+              }}
+            >
+              {phoneme.text}
+            </div>
+          );
+        })}
       <div className="plot-container">
         {/* Phonemes boxes */}
 
@@ -798,6 +900,26 @@ const MicrophonePlotRTC = () => {
         {/* <div className="red-rectangle"></div> */}
         <canvas ref={envelopeCanvasRef} />
         <div className="green-marker" ref={envelopeMarkerRef}></div>
+      </div>
+      <div
+        style={{
+          fontSize: "xxx-large",
+          fontWeight: "bolder",
+          color: "grey",
+          textAlign: "center",
+          zIndex: "100000000",
+          position: "relative",
+          opacity: "0.5",
+        }}
+      >
+        {currentWord}
+      </div>
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        {!isStarted && (
+          <button className="myButton" onClick={handleStartButtonClick}>
+            Start
+          </button>
+        )}
       </div>
     </>
   );

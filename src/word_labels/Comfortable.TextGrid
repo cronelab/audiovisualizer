@@ -1,0 +1,80 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0.0
+xmax = 1.69
+tiers? <exists>
+size = 2
+item []:
+	item [1]:
+		class = "IntervalTier"
+		name = "Word"
+		xmin = 0.0
+		xmax = 1.69
+		intervals: size = 3
+			intervals [1]:
+				xmin = 0.0
+				xmax = 0.01
+				text = ""
+			intervals [2]:
+				xmin = 0.01
+				xmax = 1.6715625
+				text = "Comfortable"
+			intervals [3]:
+				xmin = 1.6715625
+				xmax = 1.69
+				text = ""
+	item [2]:
+		class = "IntervalTier"
+		name = "Phoneme"
+		xmin = 0.0
+		xmax = 1.69
+		intervals: size = 12
+			intervals [1]:
+				xmin = 0.0
+				xmax = 0.01
+				text = ""
+			intervals [2]:
+				xmin = 0.01
+				xmax = 0.19799999999999884
+				text = "K"
+			intervals [3]:
+				xmin = 0.19799999999999884
+				xmax = 0.3534374999999985
+				text = "AH"
+			intervals [4]:
+				xmin = 0.3534374999999985
+				xmax = 0.5783124999999993
+				text = "M"
+			intervals [5]:
+				xmin = 0.5783124999999993
+				xmax = 0.7372499999999997
+				text = "F"
+			intervals [6]:
+				xmin = 0.7372499999999997
+				xmax = 0.9156249999999988
+				text = "ER"
+			intervals [7]:
+				xmin = 0.9156249999999988
+				xmax = 1.0663749999999992
+				text = "D"
+			intervals [8]:
+				xmin = 1.0663749999999992
+				xmax = 1.2359374999999988
+				text = "AH"
+			intervals [9]:
+				xmin = 1.2359374999999988
+				xmax = 1.4101874999999995
+				text = "B"
+			intervals [10]:
+				xmin = 1.4101874999999995
+				xmax = 1.5161874999999994
+				text = "AH"
+			intervals [11]:
+				xmin = 1.5161874999999994
+				xmax = 1.6715625
+				text = "L"
+			intervals [12]:
+				xmin = 1.6715625
+				xmax = 1.69
+				text = ""
